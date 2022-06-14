@@ -1,0 +1,105 @@
+pipeline
+{
+    
+agent any
+
+tools{
+maven "Maven3.8.4"
+}
+
+triggers {
+  pollSCM ('* * * * *')
+}
+
+options {
+  buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '5', daysToKeepStr: '', numToKeepStr: '5')
+
+timestamps()
+}
+
+
+
+stages{
+   
+//Checkout Code stage
+stage('checkoutCode')
+{
+steps{
+    sendSlackNotifications('STARTED')
+git branch: 'development', credentialsId: 'eaa29421-518a-41c4-8037-a281fa9bf3f5', url: 'https://github.com/ManideepPasavala/maven-web-application.git'
+}
+}
+
+//Build Stage
+stage('Build')
+{
+steps{
+sh "mvn clean package"
+}
+}
+
+//Execute SonarQube Report
+stage('ExecuteSonarQubeReprt')
+{
+steps{
+sh "mvn sonar:sonar"
+}
+}
+
+//Upload artidacts into artifactoy repo
+stage('UploadArtifactIntoNexus')
+{
+steps{
+sh "mvn deploy"
+}
+}
+
+stage('DeployAPPINtoTomcatServer'){
+steps{
+sshagent(['89611027-8ca7-4e3c-b20a-8fba9d7c5e83']) {
+sh "scp -o StrictHostKeyChecking=no target/maven-web-application.war ec2-user@172.31.43.26:/opt/apache-tomcat-9.0.63/webapps"
+}
+}
+}
+
+}//stages closing
+
+post {
+  success {
+      sendSlackNotifications('SUCCESS')
+  }
+  failure {
+      sendSlackNotifications('FAILURE')
+  }
+}
+
+
+}//pipeline closing
+
+
+
+def sendSlackNotifications(String buildStatus = 'STARTED') {
+  // build status of null means successful
+  buildStatus =  buildStatus ?: 'SUCCESS'
+
+  // Default values
+  def colorName = 'RED'
+  def colorCode = '#FF0000'
+  def subject = "${buildStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+  def summary = "${subject} (${env.BUILD_URL})"
+
+  // Override default values based on build status
+  if (buildStatus == 'STARTED') {
+    color = 'YELLOW'
+    colorCode = '#FFFF00'
+  } else if (buildStatus == 'SUCCESS') {
+    color = 'GREEN'
+    colorCode = '#00FF00'
+  } else {
+    color = 'RED'
+    colorCode = '#FF0000'
+  }
+  
+  // Send notifications
+  slackSend (color: colorCode, message: summary,channel: 'walmart')
+}
