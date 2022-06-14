@@ -22,6 +22,10 @@ stage('Build')
 {
 sh "${mavenHome}/bin/mvn clean package"
 }
+stage('trigger'){
+build job : 'pipelinescriptwithbulidparameters'
+}
+
 /*
 stage('ExecuteSonarQubeReprt')
 {
